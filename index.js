@@ -5,25 +5,23 @@ import NftFi from '@nftfi/js'
 dotenv.config()
 
 const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY
-const ALCHEMY_NETWORK_NAME = process.env.ALCHEMY_NETWORK_NAME
+const ALCHEMY_RPC_URI = process.env.ALCHEMY_RPC_URI
 const FABRICA_V3_CONTRACT_ADDRESS = process.env.FABRICA_V3_CONTRACT_ADDRESS
 const FABRICA_V3_TOKEN_ID = process.env.FABRICA_V3_TOKEN_ID
 const FABRICA_V3_TOKEN_HOLDER_ADDRESS = process.env.FABRICA_V3_TOKEN_HOLDER_ADDRESS
 const LENDER_PRIVATE_KEY = process.env.LENDER_PRIVATE_KEY
-const LENDER_WALLET_ADDRESS = process.env.LENDER_WALLET_ADDRESS
 const NFTFI_API_KEY = process.env.NFTFI_API_KEY
-const USDC_CONTRACT_ADDRESS = process.env.USDC_CONTRACT_ADDRESS
-
-const NftfiLoanContract = {
-  FixedV1: 'v1.loan.fixed',
-  FixedV2: 'v2.loan.fixed',
-  FixedV2_1: 'v2-1.loan.fixed',
-  FixedCollectionV2: 'v2.loan.fixed.collection',
-}
 
 const createOffer = async () => {
+  const nftfi = await NftFi.init({
+    config: { api: { key: NFTFI_API_KEY } },
+    ethereum: {
+      account: { privateKey: `0x${LENDER_PRIVATE_KEY}` },
+      provider: { url: `${ALCHEMY_RPC_URI}/${ALCHEMY_API_KEY}` },
+    }
+  })
   const terms = {
-    currency: USDC_CONTRACT_ADDRESS,
+    currency: nftfi.config.erc20.usdc.address,
     // 1 USDC
     principal: 1_000_000,
     // 1.1 USDC
@@ -33,20 +31,8 @@ const createOffer = async () => {
     // 7 days
     expiry: 21_600,
   }
-  const alchemyClient = new Alchemy({
-    apiKey: ALCHEMY_API_KEY,
-    network: ALCHEMY_NETWORK_NAME,
-  })
-  const provider = await alchemyClient.config.getProvider()
-  const nftfi = await NftFi.init({
-    config: { api: { key: NFTFI_API_KEY } },
-    ethereum: {
-      account: { privateKey: `0x${LENDER_PRIVATE_KEY}` },
-      provider: { url: provider.connection.url },
-    },
-  })
   const lenderBalance = await nftfi.erc20.balanceOf({
-    account: { address: LENDER_WALLET_ADDRESS },
+    account: { address: nftfi.account.getAddress() },
     token: { address: terms.currency },
   })
   if (BigInt(lenderBalance) < BigInt(terms.principal)) {
@@ -55,7 +41,7 @@ const createOffer = async () => {
   await nftfi.erc20.approve({
     amount: terms.principal,
     token: { address: terms.currency },
-    nftfi: { contract: { name: NftfiLoanContract.FixedV2_1 } },
+    nftfi: { contract: { name: nftfi.config.loan.fixed.v2_1.name } },
   })
   const createOffer = {
     terms,
@@ -64,7 +50,7 @@ const createOffer = async () => {
       id: FABRICA_V3_TOKEN_ID,
     },
     borrower: { address: FABRICA_V3_TOKEN_HOLDER_ADDRESS },
-    nftfi: { contract: { name: NftfiLoanContract.FixedV2_1 } },
+    nftfi: { contract: { name: nftfi.config.loan.fixed.v2_1.name } },
   }
   console.debug('Creating NFTfi offer...', createOffer)
   const response = await nftfi.offers.create(createOffer)
@@ -86,7 +72,6 @@ const createOffer = async () => {
   const { result } = response
   console.debug('Offer successfully created', result)
 }
-
 
 createOffer()
   .catch((error) => {
